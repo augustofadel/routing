@@ -21,7 +21,7 @@ def create_data_model():
   data = {}
   data["tot_days"] = 22
   data["tot_work_hours"] = 10
-  data["dist_matrix"] = np.loadtxt(os.path.join(data_dir, 'dist_matrix.txt'), dtype=float) * 1000
+  data["dist_matrix"] = np.loadtxt(os.path.join(data_dir, 'dist_matrix.txt'), dtype=float)  # (meters)
   data["locations"] = dat[['lat', 'lon']].values.tolist()
   data["num_locations"] = len(data["locations"])
   data["num_vehicles"] = 5
@@ -33,9 +33,9 @@ def create_data_model():
   data["vehicle_capacities"] = [42] * data["num_vehicles"]
   data["time_windows"] = [(0, data["tot_work_hours"] * 60 * data["tot_days"])] * data["num_locations"]
   data["time_per_demand_unit"] = 4 * 60
-  data["vehicle_speed"] = 30 * 1000 / 60
-  # data["travel_time_matrix"] = np.loadtxt(os.path.join(data_dir, 'time_matrix.txt'), dtype=float)  # min
-  data["travel_time_matrix"] = data["dist_matrix"] / data["vehicle_speed"]
+  # data["vehicle_speed"] = 30 * 1000 / 60
+  data["travel_time_matrix"] = np.loadtxt(os.path.join(data_dir, 'time_matrix.txt'), dtype=float) / 60  # (minutes)
+  # data["travel_time_matrix"] = data["dist_matrix"] / data["vehicle_speed"]
   return data
 
 #######################
@@ -177,7 +177,7 @@ def print_solution(data, routing, assignment):
   # print('Total time of all routes: {0:.3f} days'.format(time_matrix / (60 * data["tot_work_hours"])))
   # print('Mean minimun time per route: {0:.3f} days'.format(time_matrix / (60 * data["tot_work_hours"] * data["num_vehicles"])))
   # print('Mean minimun time per location: {0:.3f} h\n'.format(time_matrix / (60 * (data["num_locations"] - 1))))
-  print('The travel times were estimated considering the average speed of {0} km/h.\n'.format(round(data["vehicle_speed"] / 1000 * 60)))
+  # print('The travel times were estimated considering the average speed of {0} km/h.\n'.format(round(data["vehicle_speed"] / 1000 * 60)))
   final_route["routes_distance"] = routes_distance
   with open(os.path.join(data_dir, 'final_route.json'), 'w') as json_file: 
     json.dump(final_route, json_file)
@@ -209,7 +209,10 @@ def main():
     routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION)  # PATH_CHEAPEST_ARC SAVINGS SWEEP CHRISTOFIDES BEST_INSERTION PARALLEL_CHEAPEST_INSERTION LOCAL_CHEAPEST_INSERTION
   # Setting local search options
   search_parameters.local_search_metaheuristic = (
-    routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)  # GREEDY_DESCENT GUIDED_LOCAL_SEARCH SIMULATED_ANNEALING TABU_SEARCH
+    routing_enums_pb2.LocalSearchMetaheuristic.TABU_SEARCH)  # GREEDY_DESCENT GUIDED_LOCAL_SEARCH SIMULATED_ANNEALING TABU_SEARCH
+  search_parameters.time_limit_ms = 60000
+  # routing.SetCommandLineOption("routing_guided_local_search", "true")
+  # set_use_depth_first_search(true)
   # Solve the problem.
   assignment = routing.SolveWithParameters(search_parameters)
   if assignment:

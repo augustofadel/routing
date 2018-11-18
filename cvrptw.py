@@ -20,7 +20,7 @@ def create_data_model():
   """Stores the data for the problem"""
   data = {}
   data["tot_days"] = 22
-  data["tot_work_hours"] = 12
+  data["tot_work_hours"] = 10
   data["dist_matrix"] = np.loadtxt(os.path.join(data_dir, 'dist_matrix.txt'), dtype=float) * 1000
   data["locations"] = dat[['lat', 'lon']].values.tolist()
   data["num_locations"] = len(data["locations"])
@@ -33,7 +33,7 @@ def create_data_model():
   data["vehicle_capacities"] = [42] * data["num_vehicles"]
   data["time_windows"] = [(0, data["tot_work_hours"] * 60 * data["tot_days"])] * data["num_locations"]
   data["time_per_demand_unit"] = 4 * 60
-  data["vehicle_speed"] = 40 * 1000 / 60
+  data["vehicle_speed"] = 30 * 1000 / 60
   # data["travel_time_matrix"] = np.loadtxt(os.path.join(data_dir, 'time_matrix.txt'), dtype=float)  # min
   data["travel_time_matrix"] = data["dist_matrix"] / data["vehicle_speed"]
   return data
@@ -107,6 +107,19 @@ def add_time_window_constraints(routing, data, time_callback):
         index = routing.NodeToIndex(location_node)
         time_dimension.CumulVar(index).SetRange(location_time_window[0], location_time_window[1])
 
+# def get_routes_array(assignment, data, routing):
+#   routes = []
+#   for route_nbr in range(data["num_vehicles"]):
+#     node = routing.Start(route_nbr)
+#     route = []
+
+#     while not routing.IsEnd(node):
+#       index = routing.NodeToIndex(node)
+#       route.append(index)
+#       node = assignment.Value(routing.NextVar(node))
+#     routes.append(route)
+#   return routes
+
 ###########
 # Printer #
 ###########
@@ -156,14 +169,14 @@ def print_solution(data, routing, assignment):
     routes_distance.append(route_dist / 1000)
     plan_output += ' {0} Load({1}) Time({2:.1f},{3:.1f})\n'.format(data["node_id"][node_index], route_load,
                                                            time_min / (60 * data["tot_work_hours"]), time_max / (60 * data["tot_work_hours"]))
-    plan_output += 'Distance of the route: {0:.3f} km\n'.format(route_dist / 1000)
     plan_output += 'Load of the route: {0}\n'.format(route_load)
-    plan_output += 'Minimun estimated time of the route: {0:.3f} days\n'.format(route_time / (60 * data["tot_work_hours"]))
+    plan_output += 'Distance of the route: {0:.3f} km\n'.format(route_dist / 1000)
+    # plan_output += 'Minimun estimated time of the route: {0:.3f} days\n'.format(route_time / (60 * data["tot_work_hours"]))
     print(plan_output)
-  print('Total distance of all routes: {0:.3f} km'.format(total_dist / 1000))
+  print('Total distance of all routes: {0:.3f} km\n'.format(total_dist / 1000))
   # print('Total time of all routes: {0:.3f} days'.format(time_matrix / (60 * data["tot_work_hours"])))
-  print('Mean minimun time per route: {0:.3f} days'.format(time_matrix / (60 * data["tot_work_hours"] * data["num_vehicles"])))
-  print('Mean minimun time per location: {0:.3f} h\n'.format(time_matrix / (60 * (data["num_locations"] - 1))))
+  # print('Mean minimun time per route: {0:.3f} days'.format(time_matrix / (60 * data["tot_work_hours"] * data["num_vehicles"])))
+  # print('Mean minimun time per location: {0:.3f} h\n'.format(time_matrix / (60 * (data["num_locations"] - 1))))
   print('The travel times were estimated considering the average speed of {0} km/h.\n'.format(round(data["vehicle_speed"] / 1000 * 60)))
   final_route["routes_distance"] = routes_distance
   with open(os.path.join(data_dir, 'final_route.json'), 'w') as json_file: 
@@ -190,14 +203,19 @@ def main():
   time_callback = create_time_callback(data)
   add_time_window_constraints(routing, data, time_callback)
 
-  # Setting first solution heuristic (cheapest addition).
+  # Setting first solution heuristic.
   search_parameters = pywrapcp.RoutingModel.DefaultSearchParameters()
   search_parameters.first_solution_strategy = (
-    routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
+    routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION)  # PATH_CHEAPEST_ARC SAVINGS SWEEP CHRISTOFIDES BEST_INSERTION PARALLEL_CHEAPEST_INSERTION LOCAL_CHEAPEST_INSERTION
+  # Setting local search options
+  search_parameters.local_search_metaheuristic = (
+    routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)  # GREEDY_DESCENT GUIDED_LOCAL_SEARCH SIMULATED_ANNEALING TABU_SEARCH
   # Solve the problem.
   assignment = routing.SolveWithParameters(search_parameters)
   if assignment:
     printer = print_solution(data, routing, assignment)
+    # routes = get_routes_array(assignment, data, routing)
+  print("Solver status: ", routing.status())
 
 if __name__ == '__main__':
   main()

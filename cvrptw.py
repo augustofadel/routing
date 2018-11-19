@@ -82,6 +82,8 @@ def create_time_callback(data):
   def travel_time(from_node, to_node):
     """Gets the travel times between two locations."""
     travel_time = data["travel_time_matrix"][from_node, to_node]
+    if travel_time < 15:
+      travel_time = 15
     return travel_time
 
   def time_callback(from_node, to_node):
@@ -114,18 +116,20 @@ def get_routes_array(assignment, data, routing):
     index = routing.Start(route_nbr)
     solution[route_nbr] = {}
     solution[route_nbr]["route"] = []
-    solution[route_nbr]["time_start"] = []
-    solution[route_nbr]["time_end"] = []
+    solution[route_nbr]["start"] = []
+    solution[route_nbr]["end"] = []
     solution[route_nbr]["distance_to_next"] = []
+    solution[route_nbr]["time_to_next"] = []
 
     while not routing.IsEnd(index):
       node_index = routing.IndexToNode(index)
       next_node_index = routing.IndexToNode(assignment.Value(routing.NextVar(index)))
       solution[route_nbr]["route"].append(data["node_id"][node_index])
       time_var = time_dimension.CumulVar(index)
-      solution[route_nbr]["time_start"].append(assignment.Min(time_var) / (60 * data["tot_work_hours"]))
-      solution[route_nbr]["time_end"].append(assignment.Max(time_var) / (60 * data["tot_work_hours"]))
+      solution[route_nbr]["start"].append(assignment.Min(time_var) / (60 * data["tot_work_hours"]))
+      solution[route_nbr]["end"].append(assignment.Max(time_var) / (60 * data["tot_work_hours"]))
       solution[route_nbr]["distance_to_next"].append(data["dist_matrix"][node_index, next_node_index] / 1000)
+      solution[route_nbr]["time_to_next"].append(data["travel_time_matrix"][node_index, next_node_index] / (60 * 24))
       index = assignment.Value(routing.NextVar(index))
   return solution
 

@@ -21,7 +21,7 @@ def create_data_model():
   data = {}
   data["tot_days"] = 22
   data["tot_work_hours"] = 10
-  data["dist_matrix"] = np.loadtxt(os.path.join(data_dir, 'dist_matrix.txt'), dtype=float)  # (meters)
+  data["dist_matrix"] = np.loadtxt(os.path.join(data_dir, 'dist_matrix.txt'), dtype=float) * 1000  # (meters)
   data["locations"] = dat[['lat', 'lon']].values.tolist()
   data["num_locations"] = len(data["locations"])
   data["num_vehicles"] = 5
@@ -33,9 +33,9 @@ def create_data_model():
   data["vehicle_capacities"] = [42] * data["num_vehicles"]
   data["time_windows"] = [(0, data["tot_work_hours"] * 60 * data["tot_days"])] * data["num_locations"]
   data["time_per_demand_unit"] = 4 * 60
-  # data["vehicle_speed"] = 30 * 1000 / 60
-  data["travel_time_matrix"] = np.loadtxt(os.path.join(data_dir, 'time_matrix.txt'), dtype=float) / 60  # (minutes)
-  # data["travel_time_matrix"] = data["dist_matrix"] / data["vehicle_speed"]
+  # data["travel_time_matrix"] = np.loadtxt(os.path.join(data_dir, 'time_matrix.txt'), dtype=float) / 60  # (minutes)
+  data["vehicle_speed"] = 30 * 1000 / 60
+  data["travel_time_matrix"] = data["dist_matrix"] / data["vehicle_speed"]
   return data
 
 #######################
@@ -107,18 +107,30 @@ def add_time_window_constraints(routing, data, time_callback):
         index = routing.NodeToIndex(location_node)
         time_dimension.CumulVar(index).SetRange(location_time_window[0], location_time_window[1])
 
-# def get_routes_array(assignment, data, routing):
-#   routes = []
-#   for route_nbr in range(data["num_vehicles"]):
-#     node = routing.Start(route_nbr)
-#     route = []
+def get_routes_array(assignment, data, routing):
+  time_dimension = routing.GetDimensionOrDie('Time')
+  solution = {}
+  solution["route"] = {}
+  solution["time_start"] = {}
+  solution["time_end"] = {}
+  solution["distance"] = {}
+  for route_nbr in range(data["num_vehicles"]):
+    index = routing.Start(route_nbr)
+    solution["route"][route_nbr] = []
+    solution["time_start"][route_nbr] = []
+    solution["time_end"][route_nbr] = []
+    solution["distance"][route_nbr] = []
 
-#     while not routing.IsEnd(node):
-#       index = routing.NodeToIndex(node)
-#       route.append(index)
-#       node = assignment.Value(routing.NextVar(node))
-#     routes.append(route)
-#   return routes
+    while not routing.IsEnd(index):
+      node_index = routing.IndexToNode(index)
+      next_node_index = routing.IndexToNode(assignment.Value(routing.NextVar(index)))
+      solution["route"][route_nbr].append(data["node_id"][node_index])
+      time_var = time_dimension.CumulVar(index)
+      solution["time_start"][route_nbr].append(assignment.Min(time_var) / (60 * data["tot_work_hours"]))
+      solution["time_end"][route_nbr].append(assignment.Max(time_var) / (60 * data["tot_work_hours"]))
+      solution["distance"][route_nbr].append(data["dist_matrix"][node_index, next_node_index] / 1000)
+      index = assignment.Value(routing.NextVar(index))
+  return solution
 
 ###########
 # Printer #
@@ -130,14 +142,11 @@ def print_solution(data, routing, assignment):
   time_dimension = routing.GetDimensionOrDie('Time')
   total_dist = 0
   time_matrix = 0
-  final_route = {}
-  routes_distance = []
 
   for vehicle_id in range(data["num_vehicles"]):
     index = routing.Start(vehicle_id)
     plan_output = 'Route for vehicle {0}:\n'.format(vehicle_id)
     route_dist = 0
-    vehicle_route = []
     while not routing.IsEnd(index):
       node_index = routing.IndexToNode(index)
       next_node_index = routing.IndexToNode(
@@ -152,7 +161,6 @@ def print_solution(data, routing, assignment):
         data["node_id"][node_index],
         route_load,
         time_min / (60 * data["tot_work_hours"]), time_max / (60 * data["tot_work_hours"]))
-      vehicle_route.append(data["node_id"][node_index])
       index = assignment.Value(routing.NextVar(index))
 
     node_index = routing.IndexToNode(index)
@@ -164,9 +172,6 @@ def print_solution(data, routing, assignment):
     time_max = assignment.Max(time_var)
     total_dist += route_dist
     time_matrix += route_time
-    vehicle_route.append(data["node_id"][node_index])
-    final_route[vehicle_id] = vehicle_route
-    routes_distance.append(route_dist / 1000)
     plan_output += ' {0} Load({1}) Time({2:.1f},{3:.1f})\n'.format(data["node_id"][node_index], route_load,
                                                            time_min / (60 * data["tot_work_hours"]), time_max / (60 * data["tot_work_hours"]))
     plan_output += 'Load of the route: {0}\n'.format(route_load)
@@ -177,10 +182,7 @@ def print_solution(data, routing, assignment):
   # print('Total time of all routes: {0:.3f} days'.format(time_matrix / (60 * data["tot_work_hours"])))
   # print('Mean minimun time per route: {0:.3f} days'.format(time_matrix / (60 * data["tot_work_hours"] * data["num_vehicles"])))
   # print('Mean minimun time per location: {0:.3f} h\n'.format(time_matrix / (60 * (data["num_locations"] - 1))))
-  # print('The travel times were estimated considering the average speed of {0} km/h.\n'.format(round(data["vehicle_speed"] / 1000 * 60)))
-  final_route["routes_distance"] = routes_distance
-  with open(os.path.join(data_dir, 'final_route.json'), 'w') as json_file: 
-    json.dump(final_route, json_file)
+  print('The travel times were estimated considering the average speed of {0} km/h.\n'.format(round(data["vehicle_speed"] / 1000 * 60)))
 
 
 ########
@@ -208,16 +210,17 @@ def main():
   search_parameters.first_solution_strategy = (
     routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION)  # PATH_CHEAPEST_ARC SAVINGS SWEEP CHRISTOFIDES BEST_INSERTION PARALLEL_CHEAPEST_INSERTION LOCAL_CHEAPEST_INSERTION
   # Setting local search options
-  search_parameters.local_search_metaheuristic = (
-    routing_enums_pb2.LocalSearchMetaheuristic.TABU_SEARCH)  # GREEDY_DESCENT GUIDED_LOCAL_SEARCH SIMULATED_ANNEALING TABU_SEARCH
-  search_parameters.time_limit_ms = 60000
-  # routing.SetCommandLineOption("routing_guided_local_search", "true")
+  # search_parameters.local_search_metaheuristic = (
+  #   routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)  # GREEDY_DESCENT GUIDED_LOCAL_SEARCH SIMULATED_ANNEALING TABU_SEARCH
+  # search_parameters.time_limit_ms = 600000
   # set_use_depth_first_search(true)
   # Solve the problem.
   assignment = routing.SolveWithParameters(search_parameters)
   if assignment:
     printer = print_solution(data, routing, assignment)
-    # routes = get_routes_array(assignment, data, routing)
+    solution = get_routes_array(assignment, data, routing)
+    with open(os.path.join(data_dir, 'final_route.json'), 'w') as json_file: 
+      json.dump(solution, json_file)
   print("Solver status: ", routing.status())
 
 if __name__ == '__main__':

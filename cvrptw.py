@@ -110,25 +110,22 @@ def add_time_window_constraints(routing, data, time_callback):
 def get_routes_array(assignment, data, routing):
   time_dimension = routing.GetDimensionOrDie('Time')
   solution = {}
-  solution["route"] = {}
-  solution["time_start"] = {}
-  solution["time_end"] = {}
-  solution["distance"] = {}
   for route_nbr in range(data["num_vehicles"]):
     index = routing.Start(route_nbr)
-    solution["route"][route_nbr] = []
-    solution["time_start"][route_nbr] = []
-    solution["time_end"][route_nbr] = []
-    solution["distance"][route_nbr] = []
+    solution[route_nbr] = {}
+    solution[route_nbr]["route"] = []
+    solution[route_nbr]["time_start"] = []
+    solution[route_nbr]["time_end"] = []
+    solution[route_nbr]["distance_to_next"] = []
 
     while not routing.IsEnd(index):
       node_index = routing.IndexToNode(index)
       next_node_index = routing.IndexToNode(assignment.Value(routing.NextVar(index)))
-      solution["route"][route_nbr].append(data["node_id"][node_index])
+      solution[route_nbr]["route"].append(data["node_id"][node_index])
       time_var = time_dimension.CumulVar(index)
-      solution["time_start"][route_nbr].append(assignment.Min(time_var) / (60 * data["tot_work_hours"]))
-      solution["time_end"][route_nbr].append(assignment.Max(time_var) / (60 * data["tot_work_hours"]))
-      solution["distance"][route_nbr].append(data["dist_matrix"][node_index, next_node_index] / 1000)
+      solution[route_nbr]["time_start"].append(assignment.Min(time_var) / (60 * data["tot_work_hours"]))
+      solution[route_nbr]["time_end"].append(assignment.Max(time_var) / (60 * data["tot_work_hours"]))
+      solution[route_nbr]["distance_to_next"].append(data["dist_matrix"][node_index, next_node_index] / 1000)
       index = assignment.Value(routing.NextVar(index))
   return solution
 
